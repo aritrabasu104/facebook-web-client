@@ -13,7 +13,7 @@ or preverified operation catalog ships with the library.
 Requires **Node.js 24 or later**. Install directly from GitHub:
 
 ```sh
-npm install git+https://github.com/aritrabasu104/facebook-web-client.git#v0.2.0
+npm install git+https://github.com/aritrabasu104/facebook-web-client.git#v0.2.1
 ```
 
 Compiled ESM and TypeScript declarations are included, so installation does not

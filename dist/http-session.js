@@ -122,7 +122,7 @@ export class FacebookHttpSessionTransport {
     async verifyActor() {
         this.assertLive();
         if (this.actorVerification)
-            return this.actorVerification;
+            return { ...await this.actorVerification };
         const pending = this.verifyActorOnce();
         this.actorVerification = pending;
         try {

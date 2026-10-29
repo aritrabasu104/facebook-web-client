@@ -27,7 +27,10 @@ describe('parallel HTTP actor verification', () => {
     f.fetcher.mockImplementation(async () => { enter(); await gate; return identityResponse(); });
     const reads = [f.transport.verifyActor(), f.transport.verifyActor(), f.transport.verifyActor()];
     await entered; expect(f.fetcher).toHaveBeenCalledTimes(1); release();
-    expect((await Promise.all(reads)).map(a => a.actorId)).toEqual(['615', '615', '615']);
+    const actors = await Promise.all(reads);
+    expect(actors.map(a => a.actorId)).toEqual(['615', '615', '615']);
+    expect(actors[1]).not.toBe(actors[2]); actors[1]!.actorId = 'changed-by-one-caller';
+    expect(actors[2]!.actorId).toBe('615');
     expect(f.fetcher).toHaveBeenCalledTimes(1);
   });
   it('propagates an identity refusal to every waiter without a retry or credential revival', async () => {

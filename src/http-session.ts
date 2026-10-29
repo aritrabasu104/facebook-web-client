@@ -96,7 +96,7 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
   setActorReadback(readback: FacebookApiActorReadback): void { this.assertLive(); this.actorReadback = readback; }
   async verifyActor(): Promise<Actor> {
     this.assertLive();
-    if (this.actorVerification) return this.actorVerification;
+    if (this.actorVerification) return { ...await this.actorVerification };
     const pending = this.verifyActorOnce(); this.actorVerification = pending;
     try { return { ...await pending }; }
     finally { if (this.actorVerification === pending) this.actorVerification = undefined; }
