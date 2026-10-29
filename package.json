@@ -1,6 +1,6 @@
 {
   "name": "@aritrabasu104/facebook-web-client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed, evidence-bound Facebook web GraphQL client with separate membership, posting and commenting workflows.",
   "type": "module",
   "main": "./dist/index.js",
@@ -107,11 +107,11 @@
     "groups"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "example": "node examples/mock-workflows.mjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run example && node scripts/check-package.mjs"
+    "check": "npm run typecheck && npm test && npm run compile && npm run example && node scripts/check-package.mjs",
+    "compile": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "acorn": "8.15.0"

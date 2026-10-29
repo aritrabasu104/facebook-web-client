@@ -8,6 +8,7 @@ const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 assert.equal(pkg.type, 'module');
 assert.equal(pkg.scripts.prepare, undefined);
 assert.equal(pkg.scripts.install, undefined);
+for (const hook of ['build', 'prepack', 'preinstall', 'postinstall']) assert.equal(pkg.scripts[hook], undefined);
 for (const entry of Object.values(pkg.exports)) {
   await readFile(resolve(root, entry.types));
   await import(pathToFileURL(resolve(root, entry.import)).href);
