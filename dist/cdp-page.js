@@ -9,9 +9,13 @@ export class FacebookCdpPage {
     sessionId;
     observers = new Set();
     pending = new Map();
+    targetSession;
+    targetListeners = new Map();
     constructor(socket, targetId) {
         this.socket = socket;
         this.targetId = targetId;
+        if (!socket)
+            return;
         socket.addEventListener("message", event => {
             if (typeof event.data !== "string" || event.data.length > 16 * 1024 * 1024)
                 return;
@@ -42,6 +46,32 @@ export class FacebookCdpPage {
             }
             this.pending.clear();
         });
+    }
+    /** Reuse the caller's existing approved connection instead of opening a second
+     * debugger socket. The package owns this target session until close/detach. */
+    static async fromTargetSession(session, target) {
+        if (target.origin !== FACEBOOK_ORIGIN || new URL(target.url).origin !== FACEBOOK_ORIGIN || !/^[A-Za-z0-9-]+$/u.test(target.target_id)) {
+            throw new Error("Expected an exact Facebook target from the approved connection");
+        }
+        const page = new FacebookCdpPage(undefined, target.target_id);
+        page.targetSession = session;
+        try {
+            const current = await page.command("Target.getTargetInfo", {}, false);
+            if (current.targetInfo?.targetId !== target.target_id || current.targetInfo?.type !== "page" || current.targetInfo?.url !== target.url) {
+                throw new Error("Approved Facebook target session is absent or changed before handoff");
+            }
+            for (const method of ["Network.requestWillBeSent", "Network.requestWillBeSentExtraInfo"]) {
+                const listener = (params) => { for (const observer of page.observers)
+                    observer({ method, params }); };
+                page.targetListeners.set(method, listener);
+                session.on(method, listener);
+            }
+            return page;
+        }
+        catch (error) {
+            await page.close();
+            throw error;
+        }
     }
     static async connect(endpoint, target) {
         const u = new URL(endpoint);
@@ -75,7 +105,14 @@ export class FacebookCdpPage {
         }
     }
     command(method, params, target = true) {
-        if (this.socket.readyState !== WebSocket.OPEN || target && !this.sessionId)
+        if (this.targetSession) {
+            const session = this.targetSession;
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error(`Original scoped Facebook CDP ${method} command deadline; result remains unknown`)), 40_000);
+                session.send(method, params).then(resolve, reject).finally(() => clearTimeout(timer));
+            });
+        }
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN || target && !this.sessionId)
             return Promise.reject(new Error("Original Facebook application transport is unavailable"));
         const id = ++this.serial;
         return new Promise((resolve, reject) => {
@@ -110,13 +147,23 @@ export class FacebookCdpPage {
         return result.result.value;
     }
     async close() {
+        if (this.targetSession) {
+            const session = this.targetSession;
+            this.targetSession = undefined;
+            for (const [method, listener] of this.targetListeners)
+                session.off(method, listener);
+            this.targetListeners.clear();
+            this.observers.clear();
+            await session.detach();
+            return;
+        }
         try {
-            if (this.sessionId && this.socket.readyState === WebSocket.OPEN)
+            if (this.sessionId && this.socket?.readyState === WebSocket.OPEN)
                 await this.command("Target.detachFromTarget", { sessionId: this.sessionId }, false);
         }
         finally {
             this.sessionId = undefined;
-            this.socket.close();
+            this.socket?.close();
         }
     }
     async facebookCookies() {

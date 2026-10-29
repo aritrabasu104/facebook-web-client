@@ -30,6 +30,20 @@ try {
 }
 ```
 
+If the host already has an approved Playwright CDP connection, reuse its exact
+target session to avoid a second debugger connection and consent prompt:
+
+```js
+const targetSession = await context.newCDPSession(ownedFacebookPage);
+const page = await FacebookCdpPage.fromTargetSession(targetSession, exactTarget);
+// Use the same bootstrap flow, then await page.close().
+```
+
+The package verifies the target ID, exact URL and Facebook origin before handoff.
+It retains the same evaluation limits and scoped network observation. `close()`
+detaches that target session once; it never closes the browser or any tab. The
+host still owns profile verification, window creation and window cleanup.
+
 This is an integration sketch, not a credential loader. See the exported
 `FacebookApiIdentityTemplate`, `FacebookApiSessionBootstrapPage` and
 `FacebookSessionTransport` types for the inputs the host must provide.

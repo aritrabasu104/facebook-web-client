@@ -2,6 +2,15 @@ import type { FacebookOriginPage } from "./browser-session.js";
 import { FACEBOOK_ORIGIN, FACEBOOK_GRAPHQL_URL, operationForName } from "./contracts.js";
 import { CapturedFacebookRequestSession, type FacebookSessionCookie } from "./http-session.js";
 
+/** An already authorized, caller-created session attached to one exact target.
+ * Implemented structurally by Playwright's CDPSession; no Playwright dependency. */
+export interface FacebookCdpTargetSession {
+  send(method: any, params?: any): Promise<any>;
+  on(event: "Network.requestWillBeSent" | "Network.requestWillBeSentExtraInfo", listener: (params: any) => void): unknown;
+  off(event: "Network.requestWillBeSent" | "Network.requestWillBeSentExtraInfo", listener: (params: any) => void): unknown;
+  detach(): Promise<void>;
+}
+
 /** Application-side connection to the one target selected by REA. No browser
  * launch, automatic target attachment, navigation, input, or Browser.close. */
 export class FacebookCdpPage implements FacebookOriginPage {
@@ -9,7 +18,10 @@ export class FacebookCdpPage implements FacebookOriginPage {
   private sessionId?: string;
   private readonly observers = new Set<(event: any) => void>();
   private readonly pending = new Map<number, { method: string; resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
-  private constructor(private readonly socket: WebSocket, private readonly targetId: string) {
+  private targetSession?: FacebookCdpTargetSession;
+  private readonly targetListeners = new Map<string, (params: any) => void>();
+  private constructor(private readonly socket: WebSocket | undefined, private readonly targetId: string) {
+    if (!socket) return;
     socket.addEventListener("message", event => {
       if (typeof event.data !== "string" || event.data.length > 16 * 1024 * 1024) return;
       let message: any; try { message = JSON.parse(event.data); } catch { return; }
@@ -23,6 +35,26 @@ export class FacebookCdpPage implements FacebookOriginPage {
       for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error("Original Facebook application connection closed")); }
       this.pending.clear();
     });
+  }
+  /** Reuse the caller's existing approved connection instead of opening a second
+   * debugger socket. The package owns this target session until close/detach. */
+  static async fromTargetSession(session: FacebookCdpTargetSession, target: { target_id: string; origin: string; url: string }): Promise<FacebookCdpPage> {
+    if (target.origin !== FACEBOOK_ORIGIN || new URL(target.url).origin !== FACEBOOK_ORIGIN || !/^[A-Za-z0-9-]+$/u.test(target.target_id)) {
+      throw new Error("Expected an exact Facebook target from the approved connection");
+    }
+    const page = new FacebookCdpPage(undefined, target.target_id);
+    page.targetSession = session;
+    try {
+      const current = await page.command("Target.getTargetInfo", {}, false);
+      if (current.targetInfo?.targetId !== target.target_id || current.targetInfo?.type !== "page" || current.targetInfo?.url !== target.url) {
+        throw new Error("Approved Facebook target session is absent or changed before handoff");
+      }
+      for (const method of ["Network.requestWillBeSent", "Network.requestWillBeSentExtraInfo"] as const) {
+        const listener = (params: any) => { for (const observer of page.observers) observer({ method, params }); };
+        page.targetListeners.set(method, listener); session.on(method, listener);
+      }
+      return page;
+    } catch (error) { await page.close(); throw error; }
   }
   static async connect(endpoint: string, target: { target_id: string; origin: string; url: string }): Promise<FacebookCdpPage> {
     const u = new URL(endpoint);
@@ -49,12 +81,19 @@ export class FacebookCdpPage implements FacebookOriginPage {
     } catch (error) { socket.close(); throw error; }
   }
   private command(method: "Target.getTargets" | "Target.getTargetInfo" | "Target.attachToTarget" | "Target.detachFromTarget" | "Runtime.evaluate" | "Network.getCookies" | "Network.enable" | "Network.disable", params: Record<string, unknown>, target = true): Promise<any> {
-    if (this.socket.readyState !== WebSocket.OPEN || target && !this.sessionId) return Promise.reject(new Error("Original Facebook application transport is unavailable"));
+    if (this.targetSession) {
+      const session = this.targetSession;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`Original scoped Facebook CDP ${method} command deadline; result remains unknown`)), 40_000);
+        session.send(method, params).then(resolve, reject).finally(() => clearTimeout(timer));
+      });
+    }
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN || target && !this.sessionId) return Promise.reject(new Error("Original Facebook application transport is unavailable"));
     const id = ++this.serial;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Original scoped Facebook CDP ${method} command deadline; result remains unknown`)); }, 40_000);
       this.pending.set(id, { method, resolve, reject, timer });
-      try { this.socket.send(JSON.stringify({ id, method, params, ...(target ? { sessionId: this.sessionId } : {}) })); }
+      try { this.socket!.send(JSON.stringify({ id, method, params, ...(target ? { sessionId: this.sessionId } : {}) })); }
       catch { clearTimeout(timer); this.pending.delete(id); reject(new Error("Original scoped Facebook command could not be sent")); }
     });
   }
@@ -73,8 +112,13 @@ export class FacebookCdpPage implements FacebookOriginPage {
     await this.url(); return result.result.value as T;
   }
   async close(): Promise<void> {
-    try { if (this.sessionId && this.socket.readyState === WebSocket.OPEN) await this.command("Target.detachFromTarget", { sessionId: this.sessionId }, false); }
-    finally { this.sessionId = undefined; this.socket.close(); }
+    if (this.targetSession) {
+      const session = this.targetSession; this.targetSession = undefined;
+      for (const [method, listener] of this.targetListeners) session.off(method as "Network.requestWillBeSent" | "Network.requestWillBeSentExtraInfo", listener);
+      this.targetListeners.clear(); this.observers.clear(); await session.detach(); return;
+    }
+    try { if (this.sessionId && this.socket?.readyState === WebSocket.OPEN) await this.command("Target.detachFromTarget", { sessionId: this.sessionId }, false); }
+    finally { this.sessionId = undefined; this.socket?.close(); }
   }
   async facebookCookies(): Promise<FacebookSessionCookie[]> {
     await this.url();

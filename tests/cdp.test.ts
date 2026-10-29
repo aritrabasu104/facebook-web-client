@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FacebookCdpPage } from "../src/cdp-page.js";
+import { EventEmitter } from "node:events";
 
 const endpoint = "ws://127.0.0.1:9222/devtools/browser/test-approved";
 const target = { target_id: "exact-native-target", origin: "https://www.facebook.com", url: "https://www.facebook.com/profile.php?id=101" };
@@ -61,5 +62,49 @@ describe("Facebook application CDP custody", () => {
   it("rejects a non-loopback debugger before connection", async () => {
     setup(); await expect(FacebookCdpPage.connect(endpoint.replace("127.0.0.1", "remote.example"), target)).rejects.toThrow("approved loopback");
     expect(sockets).toHaveLength(0);
+  });
+});
+
+describe("caller-owned approved target session", () => {
+  function sessionFixture() {
+    setup();
+    const info = { targetId: target.target_id, type: "page", url: target.url };
+    const session = Object.assign(new EventEmitter(), {
+      send: vi.fn(async (method: string) => method === "Target.getTargetInfo" ? { targetInfo: info } :
+        method === "Runtime.evaluate" ? { result: { value: { verified: true } } } : {}),
+      detach: vi.fn(async () => {}),
+    });
+    return { session, info };
+  }
+  it("reuses one approved connection, scopes evaluation and detaches exactly once", async () => {
+    const { session } = sessionFixture();
+    const page = await FacebookCdpPage.fromTargetSession(session, target);
+    expect(await page.evaluate(() => ({ verified: true }), {})).toEqual({ verified: true });
+    expect(sockets).toHaveLength(0);
+    expect(session.send.mock.calls.every(([method]) => ["Target.getTargetInfo", "Runtime.evaluate"].includes(method))).toBe(true);
+    await page.close(); await page.close(); expect(session.detach).toHaveBeenCalledOnce();
+    expect(session.eventNames()).toEqual([]);
+    await expect(page.url()).rejects.toThrow("transport is unavailable");
+  });
+  it.each(["identity", "origin", "route", "type"])("rejects changed target %s and never substitutes another tab", async kind => {
+    const { session, info } = sessionFixture();
+    if (kind === "identity") info.targetId = "different-target";
+    if (kind === "origin") info.url = "https://unrelated.example/";
+    if (kind === "route") info.url = "https://www.facebook.com/";
+    if (kind === "type") info.type = "worker";
+    await expect(FacebookCdpPage.fromTargetSession(session, target)).rejects.toThrow("absent or changed");
+    expect(session.detach).toHaveBeenCalledOnce(); expect(session.send).toHaveBeenCalledOnce(); expect(sockets).toHaveLength(0);
+  });
+  it("keeps origin and payload limits on the reused connection", async () => {
+    const { session, info } = sessionFixture(); const page = await FacebookCdpPage.fromTargetSession(session, target);
+    await expect(page.evaluate(() => 1, { large: "x".repeat(1_048_576) })).rejects.toThrow("budget");
+    info.url = "https://unrelated.example/";
+    await expect(page.evaluate(() => 1, {})).rejects.toThrow("escaped");
+    expect(session.send.mock.calls.some(([method]) => method === "Runtime.evaluate")).toBe(false); await page.close();
+  });
+  it("forwards only the two scoped network observation events", async () => {
+    const { session } = sessionFixture(); const page = await FacebookCdpPage.fromTargetSession(session, target);
+    expect(session.eventNames().sort()).toEqual(["Network.requestWillBeSent", "Network.requestWillBeSentExtraInfo"]);
+    await page.close(); expect(session.eventNames()).toEqual([]);
   });
 });
