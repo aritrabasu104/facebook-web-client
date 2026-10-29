@@ -1,4 +1,4 @@
-import { FacebookApiClient, type FacebookMutationEligibility, type NativeFacebookMutationOwner, type FacebookMutationIntent, type FacebookFirstOriginalApiVerification } from "./client.js";
+import { FacebookApiClient, type FacebookMutationEligibility, type NativeFacebookMutationOwner, type FacebookMutationIntent, type FacebookFirstOriginalApiVerification, type FacebookOriginalApiResponse } from "./client.js";
 import type { FacebookContract } from "./contracts.js";
 import type { FacebookGraphqlResult } from "./protocol.js";
 
@@ -10,6 +10,7 @@ export interface PreparedFacebookAction {
   eligibility: FacebookMutationEligibility;
   owner: NativeFacebookMutationOwner;
   firstOriginalApiVerification?: FacebookFirstOriginalApiVerification;
+  retainOriginalResponse?(receipt: FacebookOriginalApiResponse, intent: FacebookMutationIntent): Promise<void>;
   verifyOutcome(result: FacebookGraphqlResult, intent: FacebookMutationIntent): Promise<{ state: "verified" | "pending" | "unknown" | "refused"; resultId?: string; reason?: string }>;
 }
 export class FacebookGroupMembershipApi {

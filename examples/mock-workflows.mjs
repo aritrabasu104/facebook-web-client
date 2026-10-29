@@ -7,6 +7,7 @@ const at = new Date().toISOString();
 const actor = { actorId: '101', actorUrl: 'https://www.facebook.com/profile.php?id=101',
   sessionId: 'synthetic-session', verifiedAt: at };
 let sent = 0;
+const retainedResponses = [];
 const facebook = createFacebookClient({ transport: {
   async verifyActor() { return { ...actor }; },
   async execute() { sent++; return { status: 200, body: '{"data":{"synthetic":true}}' }; },
@@ -36,7 +37,11 @@ function action(c, prepared, targets, resultId) {
       async recordOutcome(_intent, value) { assert.equal(dispatched, true); outcome = value; },
       async readBack() { return { state: outcome.state, operationId: intent.operationId }; },
     },
-    async verifyOutcome() { return { state: 'verified', resultId }; },
+    async retainOriginalResponse(receipt, original) {
+      assert.equal(original.operationId, c.operation);
+      retainedResponses.push(receipt.responseSha256);
+    },
+    async verifyOutcome() { assert.equal(retainedResponses.length, sent); return { state: 'verified', resultId }; },
   };
 }
 
@@ -56,5 +61,6 @@ const results = [
     { actorId: actor.actorId, targetId: discussion.postId, targets: discussion }), discussion, 'example-comment')),
 ];
 assert.equal(sent, 3);
+assert.equal(retainedResponses.length, 3);
 assert.deepEqual(results.map(r => r.state), ['verified', 'verified', 'verified']);
 console.log('Three synthetic workflows completed through imported package APIs; no network used.');

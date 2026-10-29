@@ -89,6 +89,11 @@ and `membership: "not_joined"`. Posting/commenting use `sourceOwner:
 "campaign"` and `membership: "joined"`; this is the generic delivery-owner
 label in the public interface.
 
+Supply `retainOriginalResponse(receipt, intent)` when the host needs original
+response custody. It is awaited before `verifyOutcome`; the receipt contains
+the original HTTP status, response digest, receive time and parsed result.
+Keep this evidence with the original durable action, without credentials.
+
 Eligibility must be at most 60 seconds old and establish exact actor/target,
 authored language and subject, complete displayed rules, Page support, no
 unverified member qualification, and action permission. A button alone is
