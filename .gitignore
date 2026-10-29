@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+*.tgz
+.env
+.env.*
+*.har
+*.sqlite*
+*.db
+.DS_Store

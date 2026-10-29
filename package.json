@@ -1,0 +1,124 @@
+{
+  "name": "@aritrabasu104/facebook-web-client",
+  "version": "0.1.0",
+  "description": "Typed, evidence-bound Facebook web GraphQL client with separate membership, posting and commenting workflows.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./contracts": {
+      "types": "./dist/contracts.d.ts",
+      "import": "./dist/contracts.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./requests": {
+      "types": "./dist/requests.d.ts",
+      "import": "./dist/requests.js"
+    },
+    "./observations": {
+      "types": "./dist/observations.d.ts",
+      "import": "./dist/observations.js"
+    },
+    "./native-owner": {
+      "types": "./dist/native-owner.d.ts",
+      "import": "./dist/native-owner.js"
+    },
+    "./workflows": {
+      "types": "./dist/workflows.d.ts",
+      "import": "./dist/workflows.js"
+    },
+    "./browser-session": {
+      "types": "./dist/browser-session.d.ts",
+      "import": "./dist/browser-session.js"
+    },
+    "./http-session": {
+      "types": "./dist/http-session.d.ts",
+      "import": "./dist/http-session.js"
+    },
+    "./session-bootstrap": {
+      "types": "./dist/session-bootstrap.d.ts",
+      "import": "./dist/session-bootstrap.js"
+    },
+    "./cdp-page": {
+      "types": "./dist/cdp-page.d.ts",
+      "import": "./dist/cdp-page.js"
+    },
+    "./discovery": {
+      "types": "./dist/discovery.d.ts",
+      "import": "./dist/discovery.js"
+    },
+    "./capture": {
+      "types": "./dist/capture.d.ts",
+      "import": "./dist/capture.js"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js"
+    },
+    "./verification": {
+      "types": "./dist/verification.d.ts",
+      "import": "./dist/verification.js"
+    },
+    "./util": {
+      "types": "./dist/util.d.ts",
+      "import": "./dist/util.js"
+    },
+    "./research": {
+      "types": "./dist/research.d.ts",
+      "import": "./dist/research.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "docs",
+    "examples",
+    "SECURITY.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aritrabasu104/facebook-web-client.git"
+  },
+  "homepage": "https://github.com/aritrabasu104/facebook-web-client#readme",
+  "bugs": {
+    "url": "https://github.com/aritrabasu104/facebook-web-client/issues"
+  },
+  "keywords": [
+    "facebook",
+    "graphql",
+    "typescript",
+    "client",
+    "groups"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "example": "node examples/mock-workflows.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run example && node scripts/check-package.mjs"
+  },
+  "dependencies": {
+    "acorn": "8.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
