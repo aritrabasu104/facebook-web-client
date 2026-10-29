@@ -1,3 +1,4 @@
+import type { FacebookOperationCoordinator } from "./concurrency.js";
 import { FACEBOOK_GRAPHQL_URL, type FacebookContract } from "./contracts.js";
 export interface FacebookGraphqlRequest {
     url: typeof FACEBOOK_GRAPHQL_URL;
@@ -24,6 +25,8 @@ export declare function parseFacebookGraphqlResponse(response: FacebookGraphqlRe
 export declare function graphqlRequest(operation: FacebookContract, variables: Record<string, unknown>): FacebookGraphqlRequest;
 /** Session credentials are supplied inside the native transport, never here. */
 export interface FacebookSessionTransport {
+    /** Wrappers must forward this instance when they share an authenticated session. */
+    readonly coordination?: FacebookOperationCoordinator;
     verifyActor(): Promise<{
         actorUrl: string;
         actorId: string;

@@ -13,7 +13,7 @@ or preverified operation catalog ships with the library.
 Requires **Node.js 24 or later**. Install directly from GitHub:
 
 ```sh
-npm install git+https://github.com/aritrabasu104/facebook-web-client.git#v0.1.2
+npm install git+https://github.com/aritrabasu104/facebook-web-client.git#v0.2.0
 ```
 
 Compiled ESM and TypeScript declarations are included, so installation does not
@@ -53,7 +53,8 @@ proof. A write is dispatched once, retained, and checked through the caller's
 independent outcome reader.
 
 **Start here:** [Usage guide](docs/usage.md) · [API reference](docs/api.md) ·
-[Session bootstrap](docs/sessions.md) · [Architecture](docs/architecture.md)
+[Session bootstrap](docs/sessions.md) · [Architecture](docs/architecture.md) ·
+[Concurrent campaigns](docs/concurrency.md)
 
 For a complete runnable example with **synthetic data and no network access**:
 
@@ -77,6 +78,7 @@ claims, dispatch intent and outcomes across process restarts.
 | `/store` | Compressed, content-addressed SQLite protocol evidence and contract catalog |
 | `/research` | Inert Relay source discovery, sanitized-capture checks and observed-artifact validation |
 | `/client`, `/protocol`, `/requests`, `/contracts` | Focused lower-level imports |
+| `/concurrency` | Bounded campaign batches and shared per-actor/Group mutation admission |
 
 ## Behavior
 
@@ -87,6 +89,7 @@ claims, dispatch intent and outcomes across process restarts.
 - Group, post and opaque feedback identities remain separate.
 - Pending, unknown, refused and verified outcomes remain distinct.
 - No automatic mutation retries, browser fallback, scheduler or background worker.
+- Concurrent campaign preparation with ordered same-actor writes by default.
 
 Use only accounts and actions you are authorized to operate. The library does
 not handle login challenges, bypass access controls, or relax admission rules.

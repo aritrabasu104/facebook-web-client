@@ -18,6 +18,24 @@ function fixture(response = new Response('{"data":{"serpResponse":{}}}'), ttlMs 
 function verifiedReader(f: ReturnType<typeof fixture>) {
   f.transport.setActorReadback(async query => { await query(graphqlRequest(identityContract, {})); return { ...actor, verifiedAt: new Date(f.now()).toISOString() }; });
 }
+
+describe('parallel HTTP actor verification', () => {
+  it('shares one real in-flight identity read across concurrent campaigns', async () => {
+    const f = fixture(identityResponse()); verifiedReader(f);
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(r => { enter = r; }), gate = new Promise<void>(r => { release = r; });
+    f.fetcher.mockImplementation(async () => { enter(); await gate; return identityResponse(); });
+    const reads = [f.transport.verifyActor(), f.transport.verifyActor(), f.transport.verifyActor()];
+    await entered; expect(f.fetcher).toHaveBeenCalledTimes(1); release();
+    expect((await Promise.all(reads)).map(a => a.actorId)).toEqual(['615', '615', '615']);
+    expect(f.fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('propagates an identity refusal to every waiter without a retry or credential revival', async () => {
+    const f = fixture(new Response(null, { status: 403 })); verifiedReader(f);
+    const results = await Promise.allSettled([f.transport.verifyActor(), f.transport.verifyActor()]);
+    expect(results.map(r => r.status)).toEqual(['rejected', 'rejected']); expect(f.fetcher).toHaveBeenCalledTimes(1); cleared(f);
+  });
+});
 function cleared(f: ReturnType<typeof fixture>) {
   expect((f.transport as any).params.size).toBe(0); expect((f.transport as any).cookies.size).toBe(0); expect(f.transport.toJSON().destroyed).toBe(true);
 }

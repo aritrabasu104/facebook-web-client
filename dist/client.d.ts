@@ -1,5 +1,6 @@
 import type { FacebookContract, FacebookOperation } from "./contracts.js";
 import { type FacebookSessionTransport, type FacebookGraphqlResult } from "./protocol.js";
+import { type FacebookOperationCoordinator } from "./concurrency.js";
 export declare function facebookApiRequestSha256(contract: FacebookContract, variables: Record<string, unknown>): string;
 export interface FacebookTargetBindings {
     groupId?: string;
@@ -79,7 +80,8 @@ export declare class FacebookUndispatchedClaimError extends Error {
 export declare class FacebookApiClient {
     private readonly transport;
     private readonly now;
-    constructor(transport: FacebookSessionTransport, now?: () => number);
+    private readonly coordination;
+    constructor(transport: FacebookSessionTransport, now?: () => number, coordination?: FacebookOperationCoordinator);
     query(contract: FacebookContract, variables: Record<string, unknown>): Promise<FacebookGraphqlResult>;
     mutate(input: {
         contract: FacebookContract;
@@ -94,4 +96,5 @@ export declare class FacebookApiClient {
         state: string;
         operationId: string;
     }>;
+    private mutateAdmitted;
 }

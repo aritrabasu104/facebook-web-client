@@ -1,3 +1,4 @@
+import { FacebookOperationCoordinator } from "./concurrency.js";
 import { inspect } from "node:util";
 import { FACEBOOK_GRAPHQL_URL, FACEBOOK_ORIGIN, assertContract } from "./contracts.js";
 import { parseFacebookGraphqlResponse } from "./protocol.js";
@@ -41,6 +42,8 @@ export class CapturedFacebookRequestSession {
  * Its bounded idle lease renews only after actual exact-actor HTTP readback. */
 export class FacebookHttpSessionTransport {
     options;
+    coordination = new FacebookOperationCoordinator();
+    actorVerification;
     params = new Map();
     cookies = new Map();
     expiresAt;
@@ -117,6 +120,20 @@ export class FacebookHttpSessionTransport {
     }
     setActorReadback(readback) { this.assertLive(); this.actorReadback = readback; }
     async verifyActor() {
+        this.assertLive();
+        if (this.actorVerification)
+            return this.actorVerification;
+        const pending = this.verifyActorOnce();
+        this.actorVerification = pending;
+        try {
+            return { ...await pending };
+        }
+        finally {
+            if (this.actorVerification === pending)
+                this.actorVerification = undefined;
+        }
+    }
+    async verifyActorOnce() {
         this.assertLive();
         try {
             const readback = this.actorReadback;
@@ -250,7 +267,7 @@ export class FacebookHttpSessionTransport {
         }
         throw new FacebookSessionRecoveryRequired("challenge");
     }
-    async execute(request) { await this.verifyActor(); return this.send(request); }
+    async execute(request) { const original = structuredClone(request); await this.verifyActor(); return this.send(original); }
     async send(request) {
         this.assertLive();
         if (request.url !== FACEBOOK_GRAPHQL_URL || request.method !== "POST" || JSON.stringify(request.variables).length > 1_048_576)

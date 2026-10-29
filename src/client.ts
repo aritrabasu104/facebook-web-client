@@ -1,6 +1,7 @@
 import type { FacebookContract, FacebookOperation } from "./contracts.js";
 import { graphqlRequest, parseFacebookGraphqlResponse, type FacebookSessionTransport, type FacebookGraphqlResult } from "./protocol.js";
 import { sha256, stableStringify } from "./util.js";
+import { facebookOperationCoordinator, type FacebookOperationCoordinator } from "./concurrency.js";
 
 export function facebookApiRequestSha256(contract: FacebookContract, variables: Record<string, unknown>): string {
   return sha256(stableStringify(graphqlRequest(contract, variables)));
@@ -115,7 +116,8 @@ function actorVerified(actor: Awaited<ReturnType<FacebookSessionTransport["verif
 /** Protocol execution is below the existing native claim owner. No retries,
  * browser fallback, new queue, or success inferred from HTTP 200. */
 export class FacebookApiClient {
-  constructor(private readonly transport: FacebookSessionTransport, private readonly now = () => Date.now()) {}
+  constructor(private readonly transport: FacebookSessionTransport, private readonly now = () => Date.now(),
+    private readonly coordination: FacebookOperationCoordinator = facebookOperationCoordinator(transport)) {}
   async query(contract: FacebookContract, variables: Record<string, unknown>): Promise<FacebookGraphqlResult> {
     contract = structuredClone(contract); variables = structuredClone(variables);
     if (contract.kind !== "query" || contract.evidence !== "api-readback-verified" || !fresh(contract.observedAt, 86_400_000, this.now())) throw new Error("Facebook read contract has not been freshly verified");
@@ -128,6 +130,15 @@ export class FacebookApiClient {
     retainOriginalResponse?(receipt: FacebookOriginalApiResponse, intent: FacebookMutationIntent): Promise<void>;
     verifyOutcome(result: FacebookGraphqlResult, intent: FacebookMutationIntent): Promise<FacebookMutationOutcome>;
   }): Promise<{ state: string; operationId: string }> {
+    // Snapshot before waiting. Eligibility is rechecked inside the admitted turn,
+    // before the original durable owner can claim or dispatch anything.
+    const frozen = { ...input, contract: structuredClone(input.contract), variables: structuredClone(input.variables),
+      eligibility: structuredClone(input.eligibility),
+      ...(input.firstOriginalApiVerification ? { firstOriginalApiVerification: structuredClone(input.firstOriginalApiVerification) } : {}) };
+    return this.coordination.mutate({ actorUrl: frozen.eligibility.actorUrl,
+      groupId: frozen.eligibility.targetBindings?.groupId ?? frozen.eligibility.targetId }, () => this.mutateAdmitted(frozen));
+  }
+  private async mutateAdmitted(input: Parameters<FacebookApiClient["mutate"]>[0]): Promise<{ state: string; operationId: string }> {
     input = { ...input, contract: structuredClone(input.contract), variables: structuredClone(input.variables), eligibility: structuredClone(input.eligibility),
       ...(input.firstOriginalApiVerification ? { firstOriginalApiVerification: structuredClone(input.firstOriginalApiVerification) } : {}) };
     const { contract, eligibility: e, owner } = input;

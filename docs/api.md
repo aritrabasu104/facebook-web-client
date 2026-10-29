@@ -5,6 +5,9 @@ All exports include TypeScript declarations. ESM imports are supported.
 | Export | Description |
 | --- | --- |
 | `createFacebookClient({ transport, now? })` | Composes `{ api, groups, posts, comments }` over one supplied transport |
+| `runFacebookCampaigns({ campaigns, maxConcurrency?, signal? })` | Finite bounded campaigns; drains started callbacks and preserves every result |
+| `FacebookOperationCoordinator` | Shared actor/Group mutation admission; default one write per actor |
+| `facebookOperationCoordinator(transport)` | Gets the transport's shared coordinator for forwarding through wrappers |
 | `FacebookApiClient.query(contract, variables)` | Verified, fresh read contract; returns parsed GraphQL result |
 | `FacebookApiClient.mutate(input)` | Exact eligibility, durable claim, single dispatch and outcome readback |
 | `FacebookGroupMembershipApi.search/join` | Separate membership workflow |

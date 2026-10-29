@@ -1,3 +1,4 @@
+export * from "./concurrency.js";
 export * from "./contracts.js";
 export * from "./protocol.js";
 export * from "./client.js";
@@ -15,6 +16,7 @@ import type { FacebookSessionTransport } from "./protocol.js";
 export declare function createFacebookClient(input: {
     transport: FacebookSessionTransport;
     now?: () => number;
+    coordination?: import("./concurrency.js").FacebookOperationCoordinator;
 }): {
     api: FacebookApiClient;
     groups: FacebookGroupMembershipApi;

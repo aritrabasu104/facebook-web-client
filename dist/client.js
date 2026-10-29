@@ -1,5 +1,6 @@
 import { graphqlRequest, parseFacebookGraphqlResponse } from "./protocol.js";
 import { sha256, stableStringify } from "./util.js";
+import { facebookOperationCoordinator } from "./concurrency.js";
 export function facebookApiRequestSha256(contract, variables) {
     return sha256(stableStringify(graphqlRequest(contract, variables)));
 }
@@ -78,9 +79,11 @@ function actorVerified(actor, e, now, sessionId) {
 export class FacebookApiClient {
     transport;
     now;
-    constructor(transport, now = () => Date.now()) {
+    coordination;
+    constructor(transport, now = () => Date.now(), coordination = facebookOperationCoordinator(transport)) {
         this.transport = transport;
         this.now = now;
+        this.coordination = coordination;
     }
     async query(contract, variables) {
         contract = structuredClone(contract);
@@ -90,6 +93,15 @@ export class FacebookApiClient {
         return parseFacebookGraphqlResponse(await this.transport.execute(graphqlRequest(contract, variables)));
     }
     async mutate(input) {
+        // Snapshot before waiting. Eligibility is rechecked inside the admitted turn,
+        // before the original durable owner can claim or dispatch anything.
+        const frozen = { ...input, contract: structuredClone(input.contract), variables: structuredClone(input.variables),
+            eligibility: structuredClone(input.eligibility),
+            ...(input.firstOriginalApiVerification ? { firstOriginalApiVerification: structuredClone(input.firstOriginalApiVerification) } : {}) };
+        return this.coordination.mutate({ actorUrl: frozen.eligibility.actorUrl,
+            groupId: frozen.eligibility.targetBindings?.groupId ?? frozen.eligibility.targetId }, () => this.mutateAdmitted(frozen));
+    }
+    async mutateAdmitted(input) {
         input = { ...input, contract: structuredClone(input.contract), variables: structuredClone(input.variables), eligibility: structuredClone(input.eligibility),
             ...(input.firstOriginalApiVerification ? { firstOriginalApiVerification: structuredClone(input.firstOriginalApiVerification) } : {}) };
         const { contract, eligibility: e, owner } = input;

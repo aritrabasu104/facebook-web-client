@@ -1,3 +1,4 @@
+import { FacebookOperationCoordinator } from "./concurrency.js";
 import { inspect } from "node:util";
 import type { FacebookOriginPage } from "./browser-session.js";
 import { type FacebookGraphqlRequest, type FacebookGraphqlResponse, type FacebookSessionTransport } from "./protocol.js";
@@ -45,6 +46,8 @@ export type FacebookApiActorReadback = (query: (request: FacebookGraphqlRequest)
  * Its bounded idle lease renews only after actual exact-actor HTTP readback. */
 export declare class FacebookHttpSessionTransport implements FacebookSessionTransport {
     private readonly options;
+    readonly coordination: FacebookOperationCoordinator;
+    private actorVerification?;
     private readonly params;
     private readonly cookies;
     private expiresAt;
@@ -66,6 +69,7 @@ export declare class FacebookHttpSessionTransport implements FacebookSessionTran
     private retainCookie;
     setActorReadback(readback: FacebookApiActorReadback): void;
     verifyActor(): Promise<Actor>;
+    private verifyActorOnce;
     /** First-party /me/ HTTP read, without browser navigation or JavaScript
      * execution. The returned current-user module and canonical route must both
      * identify this exact Page; a public Page URL by itself is insufficient. */

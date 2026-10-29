@@ -1,6 +1,6 @@
 {
   "name": "@aritrabasu104/facebook-web-client",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Typed, evidence-bound Facebook web GraphQL client with separate membership, posting and commenting workflows.",
   "type": "module",
   "main": "./dist/index.js",
@@ -77,6 +77,10 @@
     "./research": {
       "types": "./dist/research.d.ts",
       "import": "./dist/research.js"
+    },
+    "./concurrency": {
+      "types": "./dist/concurrency.d.ts",
+      "import": "./dist/concurrency.js"
     }
   },
   "files": [

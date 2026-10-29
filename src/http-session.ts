@@ -1,3 +1,4 @@
+import { FacebookOperationCoordinator } from "./concurrency.js";
 import { inspect } from "node:util";
 import { FACEBOOK_GRAPHQL_URL, FACEBOOK_ORIGIN, assertContract } from "./contracts.js";
 import type { FacebookOriginPage } from "./browser-session.js";
@@ -38,6 +39,8 @@ export type FacebookApiActorReadback = (query: (request: FacebookGraphqlRequest)
  * credential logging, credential refresh, redirects or mutation retry exists.
  * Its bounded idle lease renews only after actual exact-actor HTTP readback. */
 export class FacebookHttpSessionTransport implements FacebookSessionTransport {
+  readonly coordination = new FacebookOperationCoordinator();
+  private actorVerification?: Promise<Actor>;
   private readonly params = new Map<string, string>();
   private readonly cookies = new Map<string, FacebookSessionCookie>();
   private expiresAt: number;
@@ -92,6 +95,13 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
   }
   setActorReadback(readback: FacebookApiActorReadback): void { this.assertLive(); this.actorReadback = readback; }
   async verifyActor(): Promise<Actor> {
+    this.assertLive();
+    if (this.actorVerification) return this.actorVerification;
+    const pending = this.verifyActorOnce(); this.actorVerification = pending;
+    try { return { ...await pending }; }
+    finally { if (this.actorVerification === pending) this.actorVerification = undefined; }
+  }
+  private async verifyActorOnce(): Promise<Actor> {
     this.assertLive();
     try {
       const readback = this.actorReadback;
@@ -165,7 +175,7 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
     }
     throw new FacebookSessionRecoveryRequired("challenge");
   }
-  async execute(request: FacebookGraphqlRequest): Promise<FacebookGraphqlResponse> { await this.verifyActor(); return this.send(request); }
+  async execute(request: FacebookGraphqlRequest): Promise<FacebookGraphqlResponse> { const original = structuredClone(request); await this.verifyActor(); return this.send(original); }
   private async send(request: FacebookGraphqlRequest): Promise<FacebookGraphqlResponse> {
     this.assertLive();
     if (request.url !== FACEBOOK_GRAPHQL_URL || request.method !== "POST" || JSON.stringify(request.variables).length > 1_048_576) throw new Error("Facebook HTTP request escaped its supported scope");
