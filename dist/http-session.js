@@ -128,9 +128,9 @@ export class FacebookHttpSessionTransport {
         const age = this.now() - Date.parse(this.actor.verifiedAt), readAge = this.identityHttpReadAt === undefined ? Infinity : this.now() - this.identityHttpReadAt;
         // Nested prerequisite/permission/readback layers often verify the exact
         // same immutable HTTP principal within milliseconds. Reuse only a real
-        // HTTP identity observation for five seconds, preserving its original
+        // HTTP identity observation for thirty seconds, preserving its original
         // timestamp and idle expiry. Bootstrap evidence cannot fill this cache.
-        if (this.actorReadback && readAge >= 0 && readAge < 5000 && age >= 0 && age < 5000)
+        if (this.actorReadback && readAge >= 0 && readAge < 30_000 && age >= 0 && age < 30_000)
             return { ...this.actor };
         const pending = this.verifyActorOnce();
         this.actorVerification = pending;

@@ -86,7 +86,7 @@ claims, dispatch intent and outcomes across process restarts.
 - Normal requests use first-party HTTP after an authorized session bootstrap.
 - Cookies and CSRF material stay in memory; sessions are explicitly destroyed.
 - Writes require fresh exact-actor and target checks and a durable claim.
-- Repeated checks reuse an actual HTTP identity observation for at most five seconds, preserving its original timestamp and idle expiry. Bootstrap proof, expired sessions and changed readback bindings cannot fill this cache.
+- Repeated checks reuse an actual HTTP identity observation for at most thirty seconds, within the sixty-second freshness bound, preserving its original timestamp and idle expiry. Bootstrap proof, expired sessions and changed readback bindings cannot fill this cache.
 - Retained protocol definitions keep their original observation dates. Their
   age alone does not expire them or trigger browser work; every operation still
   requires current API responses, exact source bindings and its native owner.

@@ -23,9 +23,9 @@ describe('parallel HTTP actor verification', () => {
   it('reuses a real identity observation briefly without changing its timestamp or extending the idle lease',async()=>{
     const f=fixture(identityResponse());verifiedReader(f);
     const first=await f.transport.verifyActor(),expiry=(f.transport as any).expiresAt;
-    for(const ms of [1,1000,4999]){f.setNow(at+ms);expect(await f.transport.verifyActor()).toEqual(first);}
+    for(const ms of [1,1000,4999,29999]){f.setNow(at+ms);expect(await f.transport.verifyActor()).toEqual(first);}
     expect(f.fetcher).toHaveBeenCalledTimes(1);expect((f.transport as any).expiresAt).toBe(expiry);
-    f.setNow(at+5000);expect((await f.transport.verifyActor()).verifiedAt).toBe(new Date(at+5000).toISOString());
+    f.setNow(at+30000);expect((await f.transport.verifyActor()).verifiedAt).toBe(new Date(at+30000).toISOString());
     expect(f.fetcher).toHaveBeenCalledTimes(2);
     f.transport.setActorReadback(async query=>{await query(graphqlRequest(identityContract,{}));return{...actor,actorId:'other'};});
     await expect(f.transport.verifyActor()).rejects.toThrow('identity_unverified');expect(f.fetcher).toHaveBeenCalledTimes(3);
