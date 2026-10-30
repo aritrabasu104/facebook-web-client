@@ -103,9 +103,10 @@ function readinessFor(contracts: FacebookContract[], required: readonly Facebook
   const missing = required.filter(operation => !contracts.some(c => c.operation === operation));
   const unverified = required.filter(operation => contracts.some(c => c.operation === operation) &&
     !contracts.some(c => c.operation === operation && c.evidence === "api-readback-verified"));
-  // A fresh unverified variant cannot renew an older verified document.
+  // Source age does not expire a definition. Malformed/future provenance and
+  // unverified variants still cannot establish a usable verified source.
   const stale = required.filter(operation => contracts.some(c => c.operation === operation && c.evidence === "api-readback-verified") &&
-    !contracts.some(c => c.operation === operation && c.evidence === "api-readback-verified" && Date.parse(c.observedAt) <= now && now - Date.parse(c.observedAt) <= 86_400_000));
+    !contracts.some(c => c.operation === operation && c.evidence === "api-readback-verified" && hasObservedFacebookContractSource(c, now)));
   return { ready: !missing.length && !unverified.length && !stale.length, missing, unverified, stale };
 }
 
