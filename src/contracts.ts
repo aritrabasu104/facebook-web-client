@@ -64,6 +64,7 @@ export function operationForName(name: string): FacebookOperation | undefined {
   if (["CometGroupRootQuery", "useGroupsCometHeaderControlsQuery"].includes(name)) return "groups.membership";
   if (name === "CometGroupDiscussionRootSuccessQuery") return "discussions.list";
   if (name === "CometUFICommentRefetchQuery") return "comments.read";
+  if (name === "GroupsCometViewerContentPendingRootQuery") return "posts.read";
   if (name === "GroupCometComposerCreateDialogQuery") return "groups.inspect";
   if (/^SearchCometResults(?:PaginatedResults|InitialResults(?:ParallelFetch)?)Query$/u.test(name)) return "groups.search";
   if (/^(?:useGroupRequestToJoinMutation|GroupCometJoinForumMutation)$/u.test(name)) return "groups.join";
