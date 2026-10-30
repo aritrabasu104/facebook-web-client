@@ -103,15 +103,15 @@ describe("existing native Facebook claim adapter", () => {
     await expect(f.client.mutate(f.input)).rejects.toThrow("fresh native eligibility");
     expect(f.native.readOriginalClaim).not.toHaveBeenCalled(); expect(f.transport.execute).not.toHaveBeenCalled();
   });
-  it("keeps a claimed request unsubmitted when its contract expires during persistence", async () => {
+  it("keeps a retained protocol definition valid across a day boundary with fresh native eligibility", async () => {
     const f = fixture();
     f.input.contract.observedAt = new Date(Date.parse(at) - 86_399_999).toISOString();
     f.input.requestSha256 = facebookApiRequestSha256(f.input.contract, f.input.variables);
     f.record.intent.requestSha256 = f.input.requestSha256;
     f.native.readOriginalClaim.mockImplementation(async () => { f.advance(2); return structuredClone(f.record); });
-    await expect(f.client.mutate(f.input)).rejects.toBeInstanceOf(FacebookUndispatchedClaimError);
-    expect(f.native.retainUnsubmitted.mock.calls[0]![1]).toBe("native_eligibility_or_contract_expired_after_claim");
-    expect(f.native.compareAndSetDispatchStarted).not.toHaveBeenCalled(); expect(f.transport.execute).not.toHaveBeenCalled();
+    await expect(f.client.mutate(f.input)).resolves.toMatchObject({state:'pending'});
+    expect(f.native.compareAndSetDispatchStarted).toHaveBeenCalledOnce();expect(f.transport.execute).toHaveBeenCalledOnce();
+    expect(f.input.contract.observedAt).toBe(new Date(Date.parse(at)-86_399_999).toISOString());
   });
   it("rechecks eligibility after awaited native dispatch persistence", async () => {
     const f = fixture(); f.native.compareAndSetDispatchStarted.mockImplementation(async () => { f.advance(61_000); return true; });

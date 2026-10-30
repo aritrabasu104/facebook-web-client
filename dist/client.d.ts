@@ -1,4 +1,4 @@
-import type { FacebookContract, FacebookOperation } from "./contracts.js";
+import { type FacebookContract, type FacebookOperation } from "./contracts.js";
 import { type FacebookSessionTransport, type FacebookGraphqlResult } from "./protocol.js";
 import { type FacebookOperationCoordinator } from "./concurrency.js";
 export declare function facebookApiRequestSha256(contract: FacebookContract, variables: Record<string, unknown>): string;

@@ -86,6 +86,9 @@ claims, dispatch intent and outcomes across process restarts.
 - Normal requests use first-party HTTP after an authorized session bootstrap.
 - Cookies and CSRF material stay in memory; sessions are explicitly destroyed.
 - Writes require fresh exact-actor and target checks and a durable claim.
+- Retained protocol definitions keep their original observation dates. Their
+  age alone does not expire them or trigger browser work; every operation still
+  requires current API responses, exact source bindings and its native owner.
 - Group, post and opaque feedback identities remain separate.
 - Pending, unknown, refused and verified outcomes remain distinct.
 - No automatic mutation retries, browser fallback, scheduler or background worker.

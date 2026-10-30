@@ -90,6 +90,15 @@ export function assertContract(contract: FacebookContract): void {
   if (contract.kind === "unknown" ? contract.evidence === "api-readback-verified" : mutation !== (contract.kind === "mutation")) throw new Error("Facebook operation effect is not established");
 }
 
+/** A retained protocol definition is immutable provenance, not a permission
+ * lease. Its observation date does not expire it. Every actual request still
+ * needs its native owner and fresh actor/target eligibility; a changed or
+ * refused provider definition must be reconciled without replaying a write. */
+export function hasObservedFacebookContractSource(contract: FacebookContract, now = Date.now()): boolean {
+  try { assertContract(contract); return Number.isFinite(now) && Date.parse(contract.observedAt) <= now; }
+  catch { return false; }
+}
+
 function readinessFor(contracts: FacebookContract[], required: readonly FacebookApiCapability[], now: number): FacebookApiContractReadiness {
   const missing = required.filter(operation => !contracts.some(c => c.operation === operation));
   const unverified = required.filter(operation => contracts.some(c => c.operation === operation) &&

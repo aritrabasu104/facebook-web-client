@@ -1,5 +1,5 @@
 import { FacebookBrowserSessionTransport } from "./browser-session.js";
-import { assertContract } from "./contracts.js";
+import { assertContract, hasObservedFacebookContractSource } from "./contracts.js";
 import { parseFacebookGraphqlResponse, graphqlRequest, facebookRateLimitObservation, FacebookRateLimitError } from "./protocol.js";
 import { FacebookSessionRecoveryRequired } from "./http-session.js";
 /** One explicit login/session-recovery boundary. Routine actor checks use the
@@ -9,9 +9,8 @@ export async function bootstrapFacebookApiFirstSession(input) {
     const identity = structuredClone(input.identity), probe = structuredClone(input.probe), configured = { ...input.configuredActor };
     for (const template of [identity, probe]) {
         assertContract(template.contract);
-        const age = Date.now() - Date.parse(template.contract.observedAt);
-        if (template.contract.kind !== "query" || age < 0 || age > 86_400_000)
-            throw new Error("Current source-observed read templates are required for session bootstrap");
+        if (template.contract.kind !== "query" || !hasObservedFacebookContractSource(template.contract))
+            throw new Error("Verified retained read templates are required for session bootstrap");
     }
     if (identity.contract.operation !== "identity.read" || identity.contract.name !== "CometSettingsDropdownTriggerQuery" ||
         !/^\d+$/u.test(configured.actorId) || configured.actorUrl !== `https://www.facebook.com/profile.php?id=${configured.actorId}` || !configured.displayName.trim()) {

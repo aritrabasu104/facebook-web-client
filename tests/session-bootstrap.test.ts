@@ -53,10 +53,16 @@ describe("Facebook API session bootstrap is a bounded read-only recovery boundar
     await expect(bootstrapFacebookApiFirstSession(f.input)).rejects.toThrow(/identity_unverified/);
     expect(f.fetcher).toHaveBeenCalledTimes(1); expect(f.consume).toHaveBeenCalledTimes(1); expect(f.destroy).toHaveBeenCalledTimes(1);
   });
-  it("rejects mutation or stale probe templates before any browser or HTTP call", async () => {
-    for (const kind of ["mutation", "stale"] as const) {
-      const f = fixture(); if (kind === "mutation") f.input.probe.contract.kind = "mutation"; else f.input.probe.contract.observedAt = "2020-01-01T00:00:00.000Z";
+  it("rejects mutation or future-dated probe templates before any browser or HTTP call", async () => {
+    for (const kind of ["mutation", "future"] as const) {
+      const f = fixture(); if (kind === "mutation") f.input.probe.contract.kind = "mutation"; else f.input.probe.contract.observedAt = "2999-01-01T00:00:00.000Z";
       await expect(bootstrapFacebookApiFirstSession(f.input)).rejects.toThrow(); expect(f.page.captureQuerySessionBootstrap).not.toHaveBeenCalled(); expect(f.fetcher).not.toHaveBeenCalled();
     }
+  });
+  it('reuses a retained identity definition while requiring fresh browser and HTTP actor verification',async()=>{
+    const f=fixture();f.input.identity.contract.observedAt=f.input.probe.contract.observedAt='2020-01-01T00:00:00.000Z';
+    const session=await bootstrapFacebookApiFirstSession(f.input);
+    expect(f.input.nativeActorProof).toHaveBeenCalledTimes(2);expect(f.fetcher).toHaveBeenCalledOnce();
+    expect(f.input.identity.contract.observedAt).toBe('2020-01-01T00:00:00.000Z');session.destroy();
   });
 });

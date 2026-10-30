@@ -1,4 +1,4 @@
-import type { FacebookContract, FacebookOperation } from "./contracts.js";
+import { hasObservedFacebookContractSource, type FacebookContract, type FacebookOperation } from "./contracts.js";
 import { graphqlRequest, parseFacebookGraphqlResponse, type FacebookSessionTransport, type FacebookGraphqlResult } from "./protocol.js";
 import { sha256, stableStringify } from "./util.js";
 import { facebookOperationCoordinator, type FacebookOperationCoordinator } from "./concurrency.js";
@@ -98,7 +98,7 @@ function assertEligible(contract: FacebookContract, e: FacebookMutationEligibili
     /^evt_[a-f0-9]{64}$/u.test(first.authorizationAuditId) && first.sourceSha256 === contract.sourceSha256 &&
     first.contractSha256 === sha256(stableStringify(contract)) && ["runtime-artifact-observed", "browser-request-observed"].includes(contract.evidence);
   if (contract.kind !== "mutation" || contract.evidence !== "api-readback-verified" && !admittedOriginalVerification || contract.operation !== e.operation ||
-      !fresh(contract.observedAt, 86_400_000, now) || !targetBindingsVerified(contract, e, variables) ||
+      !hasObservedFacebookContractSource(contract, now) || !targetBindingsVerified(contract, e, variables) ||
       contract.actorVariablePaths?.some(path => pointed(variables, path) !== e.actorId) ||
       facebookApiRequestSha256(contract, variables) !== digest || !/^[a-f0-9]{64}$/u.test(digest) ||
       !fresh(e.checkedAt, 60_000, now) || !e.languageVerified || !e.subjectVerified || !e.rulesComplete ||
@@ -120,7 +120,7 @@ export class FacebookApiClient {
     private readonly coordination: FacebookOperationCoordinator = facebookOperationCoordinator(transport)) {}
   async query(contract: FacebookContract, variables: Record<string, unknown>): Promise<FacebookGraphqlResult> {
     contract = structuredClone(contract); variables = structuredClone(variables);
-    if (contract.kind !== "query" || contract.evidence !== "api-readback-verified" || !fresh(contract.observedAt, 86_400_000, this.now())) throw new Error("Facebook read contract has not been freshly verified");
+    if (contract.kind !== "query" || contract.evidence !== "api-readback-verified" || !hasObservedFacebookContractSource(contract, this.now())) throw new Error("Facebook read contract has no verified retained source");
     return parseFacebookGraphqlResponse(await this.transport.execute(graphqlRequest(contract, variables)));
   }
   async mutate(input: {

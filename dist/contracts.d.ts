@@ -46,6 +46,11 @@ export interface FacebookApiWorkflowReadiness {
 }
 export declare function operationForName(name: string): FacebookOperation | undefined;
 export declare function assertContract(contract: FacebookContract): void;
+/** A retained protocol definition is immutable provenance, not a permission
+ * lease. Its observation date does not expire it. Every actual request still
+ * needs its native owner and fresh actor/target eligibility; a changed or
+ * refused provider definition must be reconciled without replaying a write. */
+export declare function hasObservedFacebookContractSource(contract: FacebookContract, now?: number): boolean;
 /** A workflow may have a complete API contract set while its native owner still
  * needs to verify the exact actor, eligibility, claim and authoritative outcome. */
 export declare function facebookApiWorkflowReadiness(contracts: FacebookContract[], now?: number): Record<FacebookApiWorkflow, FacebookApiWorkflowReadiness>;
