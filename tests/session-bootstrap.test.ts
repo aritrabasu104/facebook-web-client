@@ -34,7 +34,7 @@ describe("Facebook API session bootstrap is a bounded read-only recovery boundar
     expect(f.fetcher).toHaveBeenCalledTimes(1);
     const options: any = (f.fetcher.mock.calls as any[])[0][1]; expect(options.body.get("fb_api_req_friendly_name")).toBe("CometSettingsDropdownTriggerQuery");
     const browserCalls = f.page.evaluate.mock.calls.length;
-    expect((await session.verifyActor()).actorId).toBe(actorId); expect(f.fetcher).toHaveBeenCalledTimes(2);
+    expect((await session.verifyActor()).actorId).toBe(actorId); expect(f.fetcher).toHaveBeenCalledTimes(1);
     expect(f.page.evaluate).toHaveBeenCalledTimes(browserCalls); expect(JSON.stringify(session)).not.toContain("unit-test-private");
     session.destroy(); expect(() => f.captured.consume({ actorId, actorUrl, sessionId: "original-native-session", verifiedAt: new Date().toISOString() })).toThrow(/already consumed/);
   });

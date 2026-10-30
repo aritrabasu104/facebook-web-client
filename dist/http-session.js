@@ -44,6 +44,7 @@ export class FacebookHttpSessionTransport {
     options;
     coordination = new FacebookOperationCoordinator();
     actorVerification;
+    identityHttpReadAt;
     params = new Map();
     cookies = new Map();
     expiresAt;
@@ -102,6 +103,7 @@ export class FacebookHttpSessionTransport {
             !Number.isFinite(age) || age < 0 || age > 60_000)
             return this.fail("identity_unverified");
         this.actor = { ...observed };
+        this.identityHttpReadAt = now;
         this.expiresAt = now + this.idleTtlMs;
         return { ...this.actor };
     }
@@ -118,11 +120,18 @@ export class FacebookHttpSessionTransport {
         if (this.cookies.size > 128 || [...this.cookies.values()].reduce((n, c) => n + c.name.length + c.value.length, 0) > 65_536)
             throw new Error("Facebook cookie budget exceeded");
     }
-    setActorReadback(readback) { this.assertLive(); this.actorReadback = readback; }
+    setActorReadback(readback) { this.assertLive(); this.actorReadback = readback; this.identityHttpReadAt = undefined; }
     async verifyActor() {
         this.assertLive();
         if (this.actorVerification)
             return { ...await this.actorVerification };
+        const age = this.now() - Date.parse(this.actor.verifiedAt), readAge = this.identityHttpReadAt === undefined ? Infinity : this.now() - this.identityHttpReadAt;
+        // Nested prerequisite/permission/readback layers often verify the exact
+        // same immutable HTTP principal within milliseconds. Reuse only a real
+        // HTTP identity observation for five seconds, preserving its original
+        // timestamp and idle expiry. Bootstrap evidence cannot fill this cache.
+        if (this.actorReadback && readAge >= 0 && readAge < 5000 && age >= 0 && age < 5000)
+            return { ...this.actor };
         const pending = this.verifyActorOnce();
         this.actorVerification = pending;
         try {
@@ -345,7 +354,7 @@ export class FacebookHttpSessionTransport {
         }
         return returned;
     }
-    destroy() { this.destroyed = true; this.params.clear(); this.cookies.clear(); this.actorReadback = undefined; }
+    destroy() { this.destroyed = true; this.params.clear(); this.cookies.clear(); this.actorReadback = undefined; this.identityHttpReadAt = undefined; }
     toJSON() { return { transport: "facebook_direct_http", sessionMaterial: "redacted", destroyed: this.destroyed }; }
     [inspect.custom]() { return this.toJSON(); }
 }

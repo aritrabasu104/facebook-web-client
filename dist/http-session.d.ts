@@ -48,6 +48,7 @@ export declare class FacebookHttpSessionTransport implements FacebookSessionTran
     private readonly options;
     readonly coordination: FacebookOperationCoordinator;
     private actorVerification?;
+    private identityHttpReadAt?;
     private readonly params;
     private readonly cookies;
     private expiresAt;

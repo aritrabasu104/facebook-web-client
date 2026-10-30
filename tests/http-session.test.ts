@@ -20,6 +20,21 @@ function verifiedReader(f: ReturnType<typeof fixture>) {
 }
 
 describe('parallel HTTP actor verification', () => {
+  it('reuses a real identity observation briefly without changing its timestamp or extending the idle lease',async()=>{
+    const f=fixture(identityResponse());verifiedReader(f);
+    const first=await f.transport.verifyActor(),expiry=(f.transport as any).expiresAt;
+    for(const ms of [1,1000,4999]){f.setNow(at+ms);expect(await f.transport.verifyActor()).toEqual(first);}
+    expect(f.fetcher).toHaveBeenCalledTimes(1);expect((f.transport as any).expiresAt).toBe(expiry);
+    f.setNow(at+5000);expect((await f.transport.verifyActor()).verifiedAt).toBe(new Date(at+5000).toISOString());
+    expect(f.fetcher).toHaveBeenCalledTimes(2);
+    f.transport.setActorReadback(async query=>{await query(graphqlRequest(identityContract,{}));return{...actor,actorId:'other'};});
+    await expect(f.transport.verifyActor()).rejects.toThrow('identity_unverified');expect(f.fetcher).toHaveBeenCalledTimes(3);
+  });
+  it('never treats bootstrap proof or an expired session as a reusable HTTP observation',async()=>{
+    const f=fixture(identityResponse(),1000);verifiedReader(f);
+    await f.transport.verifyActor();expect(f.fetcher).toHaveBeenCalledTimes(1);
+    f.setNow(at+1000);await expect(f.transport.verifyActor()).rejects.toThrow('expired');expect(f.fetcher).toHaveBeenCalledTimes(1);
+  });
   it('shares one real in-flight identity read across concurrent campaigns', async () => {
     const f = fixture(identityResponse()); verifiedReader(f);
     let enter!: () => void, release!: () => void;

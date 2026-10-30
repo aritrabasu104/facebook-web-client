@@ -41,6 +41,7 @@ export type FacebookApiActorReadback = (query: (request: FacebookGraphqlRequest)
 export class FacebookHttpSessionTransport implements FacebookSessionTransport {
   readonly coordination = new FacebookOperationCoordinator();
   private actorVerification?: Promise<Actor>;
+  private identityHttpReadAt?: number;
   private readonly params = new Map<string, string>();
   private readonly cookies = new Map<string, FacebookSessionCookie>();
   private expiresAt: number;
@@ -82,7 +83,8 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
     if (now >= this.expiresAt) return this.fail("expired");
     if (observed.actorUrl !== this.identity.actorUrl || observed.actorId !== this.identity.actorId || observed.sessionId !== this.identity.sessionId ||
         !Number.isFinite(age) || age < 0 || age > 60_000) return this.fail("identity_unverified");
-    this.actor = { ...observed }; this.expiresAt = now + this.idleTtlMs; return { ...this.actor };
+    this.actor = { ...observed }; this.identityHttpReadAt=now;
+    this.expiresAt = now + this.idleTtlMs; return { ...this.actor };
   }
   private retainCookie(cookie: FacebookSessionCookie): void {
     if (!["facebook.com", ".facebook.com", "www.facebook.com", ".www.facebook.com"].includes(cookie.domain) ||
@@ -93,10 +95,16 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
     else this.cookies.set(key, { ...cookie });
     if (this.cookies.size > 128 || [...this.cookies.values()].reduce((n, c) => n + c.name.length + c.value.length, 0) > 65_536) throw new Error("Facebook cookie budget exceeded");
   }
-  setActorReadback(readback: FacebookApiActorReadback): void { this.assertLive(); this.actorReadback = readback; }
+  setActorReadback(readback: FacebookApiActorReadback): void { this.assertLive(); this.actorReadback = readback; this.identityHttpReadAt=undefined; }
   async verifyActor(): Promise<Actor> {
     this.assertLive();
     if (this.actorVerification) return { ...await this.actorVerification };
+    const age=this.now()-Date.parse(this.actor.verifiedAt),readAge=this.identityHttpReadAt===undefined?Infinity:this.now()-this.identityHttpReadAt;
+    // Nested prerequisite/permission/readback layers often verify the exact
+    // same immutable HTTP principal within milliseconds. Reuse only a real
+    // HTTP identity observation for five seconds, preserving its original
+    // timestamp and idle expiry. Bootstrap evidence cannot fill this cache.
+    if(this.actorReadback&&readAge>=0&&readAge<5000&&age>=0&&age<5000)return{...this.actor};
     const pending = this.verifyActorOnce(); this.actorVerification = pending;
     try { return { ...await pending }; }
     finally { if (this.actorVerification === pending) this.actorVerification = undefined; }
@@ -217,7 +225,7 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
     }
     return returned;
   }
-  destroy(): void { this.destroyed = true; this.params.clear(); this.cookies.clear(); this.actorReadback = undefined; }
+  destroy(): void { this.destroyed = true; this.params.clear(); this.cookies.clear(); this.actorReadback = undefined; this.identityHttpReadAt=undefined; }
   toJSON() { return { transport: "facebook_direct_http", sessionMaterial: "redacted", destroyed: this.destroyed }; }
   [inspect.custom]() { return this.toJSON(); }
 }
