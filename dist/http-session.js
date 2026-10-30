@@ -1,7 +1,7 @@
 import { FacebookOperationCoordinator } from "./concurrency.js";
 import { inspect } from "node:util";
 import { FACEBOOK_GRAPHQL_URL, FACEBOOK_ORIGIN, assertContract } from "./contracts.js";
-import { parseFacebookGraphqlResponse } from "./protocol.js";
+import { parseFacebookGraphqlResponse, facebookRateLimitObservation, FacebookRateLimitError } from "./protocol.js";
 export class FacebookSessionRecoveryRequired extends Error {
     reason;
     constructor(reason) {
@@ -144,6 +144,8 @@ export class FacebookHttpSessionTransport {
                         return this.fail("identity_unverified");
                     assertContract(request.operation);
                     const response = await this.send(request);
+                    if (facebookRateLimitObservation(response))
+                        throw new FacebookRateLimitError(response, request, new Date(this.now()).toISOString());
                     this.assertLive();
                     const parsed = parseFacebookGraphqlResponse(response);
                     const actors = parsed.state === "data" ? parsed.data.map(frame => frame.viewer?.actor).filter(Boolean) : [];
@@ -167,7 +169,8 @@ export class FacebookHttpSessionTransport {
             return { ...this.actor };
         }
         catch (error) {
-            this.destroy();
+            if (!(error instanceof FacebookRateLimitError))
+                this.destroy();
             throw error;
         }
     }
@@ -311,14 +314,16 @@ export class FacebookHttpSessionTransport {
             offset += chunk.length;
         }
         const body = new TextDecoder().decode(bytes);
-        if (/^\s*(?:<!doctype|<html)/iu.test(body))
+        const retryAfter = response.headers.get("retry-after"), returned = { status: response.status, body,
+            ...(retryAfter ? { retryAfter } : {}) };
+        if (response.status !== 429 && /^\s*(?:<!doctype|<html)/iu.test(body))
             return this.fail("challenge");
         // A different in-flight verification may have destroyed the session, or
         // this response may arrive after idle expiry. Keep the original returned
         // bytes available to its owner, but never repopulate dead credential maps.
         if (this.destroyed || this.now() >= this.expiresAt) {
             this.destroy();
-            return { status: response.status, body };
+            return returned;
         }
         for (const header of response.headers.getSetCookie()) {
             const [pair, ...attributes] = header.split(";"), at = pair.indexOf("=");
@@ -338,7 +343,7 @@ export class FacebookHttpSessionTransport {
             }
             this.retainCookie(updated);
         }
-        return { status: response.status, body };
+        return returned;
     }
     destroy() { this.destroyed = true; this.params.clear(); this.cookies.clear(); this.actorReadback = undefined; }
     toJSON() { return { transport: "facebook_direct_http", sessionMaterial: "redacted", destroyed: this.destroyed }; }

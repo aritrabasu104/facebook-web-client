@@ -90,7 +90,8 @@ export class FacebookBrowserSessionTransport {
                     bytes.set(chunk, offset);
                     offset += chunk.byteLength;
                 }
-                return { status: response.status, body: new TextDecoder().decode(bytes) };
+                const retryAfter = response.headers.get("retry-after");
+                return { status: response.status, body: new TextDecoder().decode(bytes), ...(retryAfter ? { retryAfter } : {}) };
             }
             finally {
                 clearTimeout(timer);

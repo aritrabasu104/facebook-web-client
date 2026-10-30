@@ -60,6 +60,15 @@ request or already-expired session cannot renew it. Expiry, identity mismatch
 or challenge destroys the memory context and requests host recovery. A lost
 write response does not grant a new write after bootstrap.
 
+HTTP 429 and the observed GraphQL rate-limit code 1675004 are classified by
+`facebookRateLimitObservation`. Only `Retry-After` is exposed from response
+headers. A rate-limited identity/bootstrap query raises `FacebookRateLimitError`
+with its original response available explicitly to the host's evidence store;
+normal JSON/inspection redacts the body. This does not renew the idle lease or
+retry the read. The host owns durable account-wide cooldown and continuation.
+Returned mutation bodies still pass unchanged to their original owner, and a
+rate-limit observation never proves non-delivery or authorizes resubmission.
+
 Use a dedicated browser window when that helps isolate work. Chrome debugger
 permission can apply to a whole profile; this adapter still restricts
 attachment/observation to the exact selected Facebook target. Never attach to

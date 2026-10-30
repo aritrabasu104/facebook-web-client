@@ -1,6 +1,6 @@
 import { FacebookBrowserSessionTransport, type FacebookOriginPage } from "./browser-session.js";
 import { assertContract, type FacebookContract } from "./contracts.js";
-import { parseFacebookGraphqlResponse, graphqlRequest, type FacebookSessionTransport } from "./protocol.js";
+import { parseFacebookGraphqlResponse, graphqlRequest, facebookRateLimitObservation, FacebookRateLimitError, type FacebookSessionTransport } from "./protocol.js";
 import { FacebookSessionRecoveryRequired, type CapturedFacebookRequestSession, type FacebookHttpSessionTransport } from "./http-session.js";
 
 type Actor = Awaited<ReturnType<FacebookSessionTransport["verifyActor"]>>;
@@ -40,6 +40,7 @@ export async function bootstrapFacebookApiFirstSession(input: {
   const captured = await input.page.captureQuerySessionBootstrap(probe.contract.name, () => browser.execute(graphqlRequest(probe.contract, probe.variables)));
   let session: FacebookHttpSessionTransport | undefined;
   try {
+    if (facebookRateLimitObservation(captured.result)) throw new FacebookRateLimitError(captured.result, graphqlRequest(probe.contract, probe.variables));
     if (parseFacebookGraphqlResponse(captured.result).state !== "data") throw new FacebookSessionRecoveryRequired("unavailable");
     session = captured.bootstrap.consume(await proof());
     session.setActorReadback(async send => {

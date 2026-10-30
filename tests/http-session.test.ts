@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { FacebookHttpSessionTransport, FacebookSessionRecoveryRequired, bootstrapFacebookHttpSession } from "../src/http-session.js";
-import { graphqlRequest } from "../src/protocol.js";
+import { graphqlRequest, FacebookRateLimitError } from "../src/protocol.js";
 import type { FacebookContract } from "../src/contracts.js";
 const at = Date.parse("2026-10-29T11:00:00Z");
 const actor = { actorUrl: "https://www.facebook.com/profile.php?id=615", actorId: "615", verifiedAt: new Date(at).toISOString(), sessionId: "original" };
@@ -43,6 +43,21 @@ function cleared(f: ReturnType<typeof fixture>) {
   expect((f.transport as any).params.size).toBe(0); expect((f.transport as any).cookies.size).toBe(0); expect(f.transport.toJSON().destroyed).toBe(true);
 }
 describe("Facebook API-first memory-only HTTP session", () => {
+  it('retains a rate-limited identity read without renewing its idle lease, then requires a real successful read',async()=>{
+    const f=fixture(new Response('{"errors":[{"code":1675004}]}',{headers:{'Retry-After':'30'}}));verifiedReader(f);
+    f.setNow(at+60_000);
+    await expect(f.transport.verifyActor()).rejects.toBeInstanceOf(FacebookRateLimitError);
+    expect(f.fetcher).toHaveBeenCalledTimes(1);expect((f.transport as any).expiresAt).toBe(at+120_000);
+    f.setNow(at+90_000);f.fetcher.mockImplementation(async()=>identityResponse());
+    await expect(f.transport.verifyActor()).resolves.toMatchObject({actorId:'615'});
+    expect((f.transport as any).expiresAt).toBe(at+210_000);expect(f.fetcher).toHaveBeenCalledTimes(2);
+  });
+  it('never revives an identity lease which expired during the native cooldown',async()=>{
+    const f=fixture(new Response('',{status:429,headers:{'Retry-After':'900'}}));verifiedReader(f);
+    await expect(f.transport.verifyActor()).rejects.toBeInstanceOf(FacebookRateLimitError);
+    f.setNow(at+120_001);await expect(f.transport.verifyActor()).rejects.toThrow('expired');
+    expect(f.fetcher).toHaveBeenCalledTimes(1);cleared(f);
+  });
   it("sends directly to Facebook after bootstrap, preserves first-party principal and exposes no secrets", async () => {
     const f = fixture(), result = await f.transport.execute(graphqlRequest(contract, {}));
     expect(result.status).toBe(200); expect(f.fetcher).toHaveBeenCalledTimes(1);

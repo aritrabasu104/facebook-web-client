@@ -61,7 +61,8 @@ export class FacebookBrowserSessionTransport implements FacebookSessionTransport
         for (;;) { const part = await reader.read(); if (part.done) break; length += part.value.byteLength;
           if (length > 8 * 1024 * 1024) { abort.abort(); throw new Error("Original Facebook response exceeds the supported API budget"); } chunks.push(part.value); }
         const bytes = new Uint8Array(length); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-        return { status: response.status, body: new TextDecoder().decode(bytes) };
+        const retryAfter = response.headers.get("retry-after");
+        return { status: response.status, body: new TextDecoder().decode(bytes), ...(retryAfter ? {retryAfter} : {}) };
       } finally { clearTimeout(timer); }
     }, { operation: { name: request.operation.name, documentId: request.operation.documentId }, variables: request.variables, actorId: actor.actorId });
   }

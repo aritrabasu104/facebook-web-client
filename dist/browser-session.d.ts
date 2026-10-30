@@ -17,6 +17,7 @@ export declare class FacebookBrowserSessionTransport implements FacebookSessionT
     execute(request: FacebookGraphqlRequest): Promise<{
         status: number;
         body: string;
+        retryAfter?: string | undefined;
     }>;
 }
 export {};

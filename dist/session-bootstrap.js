@@ -1,6 +1,6 @@
 import { FacebookBrowserSessionTransport } from "./browser-session.js";
 import { assertContract } from "./contracts.js";
-import { parseFacebookGraphqlResponse, graphqlRequest } from "./protocol.js";
+import { parseFacebookGraphqlResponse, graphqlRequest, facebookRateLimitObservation, FacebookRateLimitError } from "./protocol.js";
 import { FacebookSessionRecoveryRequired } from "./http-session.js";
 /** One explicit login/session-recovery boundary. Routine actor checks use the
  * authenticated identity query over HTTP; this function never sends mutations,
@@ -28,6 +28,8 @@ export async function bootstrapFacebookApiFirstSession(input) {
     const captured = await input.page.captureQuerySessionBootstrap(probe.contract.name, () => browser.execute(graphqlRequest(probe.contract, probe.variables)));
     let session;
     try {
+        if (facebookRateLimitObservation(captured.result))
+            throw new FacebookRateLimitError(captured.result, graphqlRequest(probe.contract, probe.variables));
         if (parseFacebookGraphqlResponse(captured.result).state !== "data")
             throw new FacebookSessionRecoveryRequired("unavailable");
         session = captured.bootstrap.consume(await proof());

@@ -20,6 +20,13 @@ function fixture() {
   return { input, captured, consume, destroy, page, fetcher };
 }
 describe("Facebook API session bootstrap is a bounded read-only recovery boundary", () => {
+  it('returns an exact quota error before consuming the captured session and never retries the bootstrap read',async()=>{
+    const f=fixture(),response={status:200,body:'{"errors":[{"code":1675004,"message":"Rate limit exceeded"}]}',retryAfter:'900'};
+    f.page.evaluate.mockImplementation(async(_fn:any,arg:any)=>typeof arg==='string'?true:response);
+    await expect(bootstrapFacebookApiFirstSession(f.input)).rejects.toMatchObject({name:'FacebookRateLimitError',response,observation:{reason:'graphql_1675004',retryAfter:'900'}});
+    expect(f.consume).not.toHaveBeenCalled();expect(f.destroy).toHaveBeenCalledOnce();expect(f.fetcher).not.toHaveBeenCalled();
+    expect(f.page.captureQuerySessionBootstrap).toHaveBeenCalledOnce();
+  });
   it("requires native Page proof and a successful captured read before direct HTTP identity", async () => {
     const f = fixture(), session = await bootstrapFacebookApiFirstSession(f.input);
     expect(f.input.nativeActorProof).toHaveBeenCalledTimes(2); expect(f.consume).toHaveBeenCalledTimes(1); expect(f.destroy).toHaveBeenCalledTimes(1);

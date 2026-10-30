@@ -2,7 +2,7 @@ import { FacebookOperationCoordinator } from "./concurrency.js";
 import { inspect } from "node:util";
 import { FACEBOOK_GRAPHQL_URL, FACEBOOK_ORIGIN, assertContract } from "./contracts.js";
 import type { FacebookOriginPage } from "./browser-session.js";
-import { parseFacebookGraphqlResponse, type FacebookGraphqlRequest, type FacebookGraphqlResponse, type FacebookSessionTransport } from "./protocol.js";
+import { parseFacebookGraphqlResponse, facebookRateLimitObservation, FacebookRateLimitError, type FacebookGraphqlRequest, type FacebookGraphqlResponse, type FacebookSessionTransport } from "./protocol.js";
 
 type Actor = Awaited<ReturnType<FacebookSessionTransport["verifyActor"]>>;
 export interface FacebookSessionCookie { name: string; value: string; domain: string; path: string; secure?: boolean; expires?: number }
@@ -110,7 +110,9 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
         const observed = await readback(async request => {
           if (request.operation.kind !== "query" || request.operation.operation !== "identity.read") return this.fail("identity_unverified");
           assertContract(request.operation);
-          const response = await this.send(request); this.assertLive();
+          const response = await this.send(request);
+          if (facebookRateLimitObservation(response)) throw new FacebookRateLimitError(response, request, new Date(this.now()).toISOString());
+          this.assertLive();
           const parsed = parseFacebookGraphqlResponse(response);
           const actors = parsed.state === "data" ? parsed.data.map(frame => (frame as any).viewer?.actor).filter(Boolean) : [];
           if (!actors.length || actors.some(actor => actor.id !== this.identity.actorId)) return this.fail("identity_unverified");
@@ -126,7 +128,7 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
       // Returning a still-fresh bootstrap/cached proof is not an HTTP read and
       // cannot renew the lease.
       return { ...this.actor };
-    } catch (error) { this.destroy(); throw error; }
+    } catch (error) { if (!(error instanceof FacebookRateLimitError)) this.destroy(); throw error; }
   }
   /** First-party /me/ HTTP read, without browser navigation or JavaScript
    * execution. The returned current-user module and canonical route must both
@@ -195,11 +197,13 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
       if (length > 8 * 1024 * 1024) { await reader.cancel(); throw new Error("Facebook HTTP response exceeds its byte bound"); } chunks.push(part.value); }
     const bytes = new Uint8Array(length); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     const body = new TextDecoder().decode(bytes);
-    if (/^\s*(?:<!doctype|<html)/iu.test(body)) return this.fail("challenge");
+    const retryAfter = response.headers.get("retry-after"), returned = {status: response.status, body,
+      ...(retryAfter ? {retryAfter} : {})};
+    if (response.status !== 429 && /^\s*(?:<!doctype|<html)/iu.test(body)) return this.fail("challenge");
     // A different in-flight verification may have destroyed the session, or
     // this response may arrive after idle expiry. Keep the original returned
     // bytes available to its owner, but never repopulate dead credential maps.
-    if (this.destroyed || this.now() >= this.expiresAt) { this.destroy(); return { status: response.status, body }; }
+    if (this.destroyed || this.now() >= this.expiresAt) { this.destroy(); return returned; }
     for (const header of response.headers.getSetCookie()) {
       const [pair, ...attributes] = header.split(";"), at = pair!.indexOf("="); if (at <= 0) continue;
       const updated: FacebookSessionCookie = { name: pair!.slice(0, at).trim(), value: pair!.slice(at + 1).trim(), domain: "www.facebook.com", path: "/" };
@@ -211,7 +215,7 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
       }
       this.retainCookie(updated);
     }
-    return { status: response.status, body };
+    return returned;
   }
   destroy(): void { this.destroyed = true; this.params.clear(); this.cookies.clear(); this.actorReadback = undefined; }
   toJSON() { return { transport: "facebook_direct_http", sessionMaterial: "redacted", destroyed: this.destroyed }; }
