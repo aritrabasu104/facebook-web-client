@@ -5,4 +5,5 @@ it('recognizes the observed pending-content query as a read and refuses mutation
   expect(operationForName(c.name)).toBe('posts.read');expect(()=>assertContract(c)).not.toThrow();
   expect(()=>assertContract({...c,operation:'posts.create',kind:'mutation'})).toThrow();
   expect(operationForName('GroupsCometViewerContentPendingMutation')).toBeUndefined();
+  for(const category of ['Published','Declined','Removed']) expect(()=>assertContract({...c,name:`GroupsCometViewerContent${category}RootQuery`})).not.toThrow();
 });

@@ -30,7 +30,7 @@ export function operationForName(name) {
         return "discussions.list";
     if (name === "CometUFICommentRefetchQuery")
         return "comments.read";
-    if (name === "GroupsCometViewerContentPendingRootQuery")
+    if (/^GroupsCometViewerContent(?:Pending|Published|Declined|Removed)RootQuery$/u.test(name))
         return "posts.read";
     if (name === "GroupCometComposerCreateDialogQuery")
         return "groups.inspect";
