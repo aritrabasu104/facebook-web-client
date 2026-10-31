@@ -1,13 +1,37 @@
 import { FacebookBrowserSessionTransport, type FacebookOriginPage } from "./browser-session.js";
 import { assertContract, hasObservedFacebookContractSource, type FacebookContract } from "./contracts.js";
 import { parseFacebookGraphqlResponse, graphqlRequest, facebookRateLimitObservation, FacebookRateLimitError, type FacebookSessionTransport } from "./protocol.js";
-import { FacebookSessionRecoveryRequired, type CapturedFacebookRequestSession, type FacebookHttpSessionTransport } from "./http-session.js";
+import { FacebookSessionRecoveryRequired, restoreFacebookNativeHttpSession, type FacebookNativeCredentialStore, type CapturedFacebookRequestSession, type FacebookHttpSessionTransport } from "./http-session.js";
 
 type Actor = Awaited<ReturnType<FacebookSessionTransport["verifyActor"]>>;
 export interface FacebookApiSessionBootstrapPage extends FacebookOriginPage {
   captureQuerySessionBootstrap<T>(name: string, probe: () => Promise<T>): Promise<{ result: T; bootstrap: CapturedFacebookRequestSession }>;
 }
 export interface FacebookApiIdentityTemplate { contract: FacebookContract; variables: Record<string, unknown> }
+function installIdentityReadback(session: FacebookHttpSessionTransport, identity: FacebookApiIdentityTemplate,
+  configured: {actorId:string;actorUrl:string;displayName:string}, sessionId:string) {
+  assertContract(identity.contract);
+  if(identity.contract.kind!=="query"||!hasObservedFacebookContractSource(identity.contract)||identity.contract.operation!=="identity.read"||
+      identity.contract.name!=="CometSettingsDropdownTriggerQuery"||!/^\d+$/u.test(configured.actorId)||
+      configured.actorUrl!==`https://www.facebook.com/profile.php?id=${configured.actorId}`||!configured.displayName.trim())throw new Error("The exact configured Page identity query is required");
+  session.setActorReadback(async send => {
+    const result = parseFacebookGraphqlResponse(await send(graphqlRequest(identity.contract, identity.variables)));
+    const actors = result.state === "data" ? result.data.map(data => (data as any).viewer?.actor).filter(Boolean) : [];
+    if (!actors.length || actors.some(a => a.id !== configured.actorId || a.name !== configured.displayName)) throw new FacebookSessionRecoveryRequired("identity_unverified");
+    return {actorId:configured.actorId,actorUrl:configured.actorUrl,sessionId,verifiedAt:new Date().toISOString()};
+  });
+}
+/** Cold startup/renewal through private native custody and one actual identity
+ * read. Missing, invalid or refused credentials never invoke a browser. */
+export async function restoreFacebookApiFirstSession(input:{store:FacebookNativeCredentialStore;originalSessionId:string;
+  configuredActor:{actorId:string;actorUrl:string;displayName:string};identity:FacebookApiIdentityTemplate;fetch?:typeof fetch}) {
+  const retained=await restoreFacebookNativeHttpSession({store:input.store,actorId:input.configuredActor.actorId,actorUrl:input.configuredActor.actorUrl,
+    sessionId:input.originalSessionId,fetch:input.fetch});
+  if(!retained)return undefined;
+  try{installIdentityReadback(retained.session,structuredClone(input.identity),{...input.configuredActor},input.originalSessionId);
+    await retained.session.verifyActor();return retained;
+  }catch(error){retained.session.destroy();throw error;}
+}
 
 /** One explicit login/session-recovery boundary. Routine actor checks use the
  * authenticated identity query over HTTP; this function never sends mutations,
@@ -42,12 +66,7 @@ export async function bootstrapFacebookApiFirstSession(input: {
     if (facebookRateLimitObservation(captured.result)) throw new FacebookRateLimitError(captured.result, graphqlRequest(probe.contract, probe.variables));
     if (parseFacebookGraphqlResponse(captured.result).state !== "data") throw new FacebookSessionRecoveryRequired("unavailable");
     session = captured.bootstrap.consume(await proof());
-    session.setActorReadback(async send => {
-      const result = parseFacebookGraphqlResponse(await send(graphqlRequest(identity.contract, identity.variables)));
-      const actors = result.state === "data" ? result.data.map(data => (data as any).viewer?.actor).filter(Boolean) : [];
-      if (!actors.length || actors.some(a => a.id !== configured.actorId || a.name !== configured.displayName)) throw new FacebookSessionRecoveryRequired("identity_unverified");
-      return { actorId: configured.actorId, actorUrl: configured.actorUrl, sessionId: input.originalSessionId, verifiedAt: new Date().toISOString() };
-    });
+    installIdentityReadback(session,identity,configured,input.originalSessionId);
     await session.verifyActor(); return session;
   } catch (error) { session?.destroy(); throw error; }
   finally { captured.bootstrap.destroy(); }

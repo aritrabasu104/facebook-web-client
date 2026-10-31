@@ -12,6 +12,38 @@ export class FacebookSessionRecoveryRequired extends Error {
   }
 }
 interface Seed { actor: Actor; params: Record<string, string>; cookies: FacebookSessionCookie[]; userAgent: string; referer: string; headers?: Record<string, string> }
+/** Private IPC to the application's existing native credential owner. Never an
+ * evidence/file store; implementations must suppress authentication UI. */
+export interface FacebookNativeCredentialStore {
+  read(): Promise<Uint8Array | undefined>;
+  write(bytes: Uint8Array): Promise<void>;
+}
+export interface FacebookNativeAuthenticationContext { channelClientId: string; scale: number }
+function assertNativeContext(value: FacebookNativeAuthenticationContext): void {
+  if (typeof value?.channelClientId !== "string" || !value.channelClientId || value.channelClientId.length > 1024 || /[\r\n]/u.test(value.channelClientId) ||
+      !Number.isFinite(value.scale) || value.scale <= 0 || value.scale > 4) throw new Error("Native Facebook authentication context is invalid");
+}
+/** Restore only private same-account material. A new transport is unusable as
+ * authenticated proof until the host installs and performs its identity read. */
+export async function restoreFacebookNativeHttpSession(input: {
+  store: FacebookNativeCredentialStore; actorId: string; actorUrl: string; sessionId: string;
+  fetch?: typeof fetch; now?: () => number;
+}): Promise<{session: FacebookHttpSessionTransport; context: FacebookNativeAuthenticationContext} | undefined> {
+  const bytes = await input.store.read();
+  if (!bytes) return undefined;
+  try {
+    if (!bytes.byteLength || bytes.byteLength > 60 * 1024) throw new Error();
+    const value = JSON.parse(new TextDecoder("utf-8", {fatal:true}).decode(bytes));
+    if (value.schema !== "facebook-native-http-credential-v1" || value.actorId !== input.actorId || value.actorUrl !== input.actorUrl ||
+        !value.seed || !Array.isArray(value.seed.cookies) || value.seed.cookies.length > 128 ||
+        !value.seed.params || typeof value.seed.params !== "object" || Array.isArray(value.seed.params) || Object.keys(value.seed.params).length > 256) throw new Error();
+    assertNativeContext(value.context);
+    const seed: Seed = {...value.seed, actor:{actorId:input.actorId,actorUrl:input.actorUrl,sessionId:input.sessionId,verifiedAt:new Date(0).toISOString()}};
+    const session = new FacebookHttpSessionTransport(seed,{fetch:input.fetch,now:input.now});
+    return {session,context:{channelClientId:value.context.channelClientId,scale:value.context.scale}};
+  } catch { throw new Error("Native Facebook credential requires reconciliation"); }
+  finally { bytes.fill(0); }
+}
 /** A single same-origin read's actual browser request context. It is consumed
  * once in memory and is deliberately nonserializable as credential evidence. */
 export class CapturedFacebookRequestSession {
@@ -186,6 +218,16 @@ export class FacebookHttpSessionTransport implements FacebookSessionTransport {
     throw new FacebookSessionRecoveryRequired("challenge");
   }
   async execute(request: FacebookGraphqlRequest): Promise<FacebookGraphqlResponse> { const original = structuredClone(request); await this.verifyActor(); return this.send(original); }
+  /** Store only through the original private native owner after a real fresh
+   * HTTP identity read. JSON/inspection remain redacted; no export is returned. */
+  async retainNativeCredentials(store: FacebookNativeCredentialStore, context: FacebookNativeAuthenticationContext): Promise<boolean> {
+    this.assertLive(); assertNativeContext(context);
+    if (this.identityHttpReadAt === undefined || this.now() - this.identityHttpReadAt < 0 || this.now() - this.identityHttpReadAt > 60_000) return false;
+    const bytes = new TextEncoder().encode(JSON.stringify({schema:"facebook-native-http-credential-v1",actorId:this.identity.actorId,actorUrl:this.identity.actorUrl,
+      context,seed:{params:Object.fromEntries(this.params),cookies:[...this.cookies.values()],...this.requestContext}}));
+    try { if(bytes.byteLength>60*1024)throw new Error("Native Facebook credential exceeds its private bound"); await store.write(bytes); return true; }
+    finally { bytes.fill(0); }
+  }
   private async send(request: FacebookGraphqlRequest): Promise<FacebookGraphqlResponse> {
     this.assertLive();
     if (request.url !== FACEBOOK_GRAPHQL_URL || request.method !== "POST" || JSON.stringify(request.variables).length > 1_048_576) throw new Error("Facebook HTTP request escaped its supported scope");

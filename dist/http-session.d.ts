@@ -23,6 +23,29 @@ interface Seed {
     referer: string;
     headers?: Record<string, string>;
 }
+/** Private IPC to the application's existing native credential owner. Never an
+ * evidence/file store; implementations must suppress authentication UI. */
+export interface FacebookNativeCredentialStore {
+    read(): Promise<Uint8Array | undefined>;
+    write(bytes: Uint8Array): Promise<void>;
+}
+export interface FacebookNativeAuthenticationContext {
+    channelClientId: string;
+    scale: number;
+}
+/** Restore only private same-account material. A new transport is unusable as
+ * authenticated proof until the host installs and performs its identity read. */
+export declare function restoreFacebookNativeHttpSession(input: {
+    store: FacebookNativeCredentialStore;
+    actorId: string;
+    actorUrl: string;
+    sessionId: string;
+    fetch?: typeof fetch;
+    now?: () => number;
+}): Promise<{
+    session: FacebookHttpSessionTransport;
+    context: FacebookNativeAuthenticationContext;
+} | undefined>;
 /** A single same-origin read's actual browser request context. It is consumed
  * once in memory and is deliberately nonserializable as credential evidence. */
 export declare class CapturedFacebookRequestSession {
@@ -77,6 +100,9 @@ export declare class FacebookHttpSessionTransport implements FacebookSessionTran
     verifyHttpActor(): Promise<Actor>;
     private readHttpActor;
     execute(request: FacebookGraphqlRequest): Promise<FacebookGraphqlResponse>;
+    /** Store only through the original private native owner after a real fresh
+     * HTTP identity read. JSON/inspection remain redacted; no export is returned. */
+    retainNativeCredentials(store: FacebookNativeCredentialStore, context: FacebookNativeAuthenticationContext): Promise<boolean>;
     private send;
     destroy(): void;
     toJSON(): {

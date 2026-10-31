@@ -60,6 +60,20 @@ request or already-expired session cannot renew it. Expiry, identity mismatch
 or challenge destroys the memory context and requests host recovery. A lost
 write response does not grant a new write after bootstrap.
 
+An application may retain verified credentials through its existing private,
+noninteractive native Keychain owner using `session.retainNativeCredentials`.
+This method returns only custody success; inspection and JSON remain redacted.
+It requires an actual fresh HTTP identity observation and never writes a file
+or returns a credential export. The host must keep its IPC private and bounded.
+
+`restoreFacebookApiFirstSession` reads that same-account native custody and
+performs the configured identity query over HTTP before returning a session.
+Missing or refused credentials never open a browser. Restoring creates a new
+local lease and requires fresh provider evidence; it cannot revive an expired
+object, clear a refusal, release original work, or replay an unknown mutation.
+Only an explicitly owned human login/consent phase should call the browser
+bootstrap. Its exact owned views still have to close before API continuation.
+
 HTTP 429 and the observed GraphQL rate-limit code 1675004 are classified by
 `facebookRateLimitObservation`. Only `Retry-After` is exposed from response
 headers. A rate-limited identity/bootstrap query raises `FacebookRateLimitError`
